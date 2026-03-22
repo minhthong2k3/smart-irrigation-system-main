@@ -53,8 +53,8 @@ bool firstTimeSend = true;
 unsigned long lastSendTime = 0;
 
 // ------------------- Smart Irrigation Variables -------------------
-const int soilThresholdOn = 50;   // Turn pump ON below this (dry soil)
-const int soilThresholdOff = 70;  // Turn pump OFF above this (moist soil)
+ int soilThresholdOn = 50;   // Turn pump ON below this (dry soil)
+ int soilThresholdOff = 70;  // Turn pump OFF above this (moist soil)
 const int rainThreshold = 30;     // Rain intensity threshold for irrigation
 const unsigned long maxPumpTime = 15UL * 60UL * 1000UL; // 15 minutes max pump time
 const int irrigationScoreThreshold = 6; // Minimum score to start irrigation
@@ -196,6 +196,23 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
           } else if (command == "auto-off") {
             autoMode = false;
             blinkLED(1, 500);
+          }
+          // --- THÊM NHÁNH NÀY CHO AI ---
+          else if (command == "update-threshold") {
+            float ai_threshold = doc["newThreshold"];
+            
+            // Ép kiểu float về int và cập nhật ngưỡng mới
+            soilThresholdOn = (int)ai_threshold;
+            
+            // Tính toán ngưỡng tắt bơm (Luôn cao hơn ngưỡng bật 15% để nước kịp ngấm)
+            soilThresholdOff = soilThresholdOn + 15; 
+            
+            // Khóa an toàn: Không cho phép ngưỡng tắt vượt quá 100%
+            if (soilThresholdOff > 100) soilThresholdOff = 100;
+
+            Serial.println("=========================================");
+            Serial.printf("🧠 AI CẬP NHẬT: Ngưỡng tưới mới là %d%% (Tắt ở %d%%)\n", soilThresholdOn, soilThresholdOff);
+            Serial.println("=========================================");
           }
         }
       }
@@ -386,6 +403,7 @@ void loop() {
       doc["irrigationScore"] = lastIrrigationScore;  // Add irrigation score
       doc["timestamp"] = getISOTime();
       doc["espConnected"] = espConnected;
+      doc["currentThreshold"] = soilThresholdOn; // Gửi ngưỡng hiện tại lên Web
 
       String jsonStr;
       serializeJson(doc, jsonStr);
