@@ -8,7 +8,7 @@
 // ------------------- WiFi credentials -------------------
 const char* ssid = "Redmi K70";
 const char* password = "heluuuuu";
-const char* websocket_server = "10.12.130.199"; 
+const char* websocket_server = "10.114.150.199"; 
 
 // ------------------- NTP Client -------------------
 WiFiUDP udp;
@@ -26,6 +26,12 @@ const uint16_t websocket_port = 3000;
 #define SOIL_MOISTURE_PIN 34  // ADC pin
 #define RAIN_SENSOR_PIN 33  // Analog pin for rain sensor
 #define LED_PIN 2  // Onboard LED (GPIO2)
+
+
+// ------------------- Manual Control Variables -------------------
+#define MANUAL_BUTTON_PIN 18  // Chân cắm công tắc gạt MTS-102
+int lastButtonState = HIGH;   // Trạng thái cũ của nút (Mặc định là HIGH do PULLUP)
+const unsigned long manualWaterDurationMs = 15UL * 1000UL; // Thời gian tưới Moderate: 15 giây
 
 // ------------------- Objects -------------------
 DHT dht(DHTPIN, DHTTYPE);
@@ -212,6 +218,8 @@ void setup() {
   pinMode(RAIN_SENSOR_PIN, INPUT);
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
+  // Tích hợp nút nhấn
+  pinMode(MANUAL_BUTTON_PIN, INPUT_PULLUP); // Dùng Pullup nội
 
   Serial.println("\n🔌 Connecting to WiFi...");
   WiFi.begin(ssid, password);
@@ -233,7 +241,38 @@ void setup() {
 // ------------------- Loop -------------------
 void loop() {
   webSocket.loop();
+// ------------------- XỬ LÝ CÔNG TẮC GẠT (CẬP NHẬT MỚI: ON/OFF TRỰC TIẾP) -------------------
+  int currentButtonState = digitalRead(MANUAL_BUTTON_PIN);
+  
+  // Chỉ thực hiện lệnh khi phát hiện bạn VỪA MỚI GẠT công tắc (trạng thái thay đổi)
+  if (currentButtonState != lastButtonState) {
+    delay(50); // Chống dội phím (Debounce) cơ học để rơ-le không bị nháy liên tục
+    
+    if (currentButtonState == LOW) {
+      // 1. Trạng thái GẠT SANG ON (Chân 18 được nối xuống GND)
+      autoMode = false; // Lập tức tắt AutoMode để nhường quyền cho tay
+      pumpStatus = true;
+      digitalWrite(RELAY_PIN, HIGH); // Kích Relay mức H (HIGH = Bật Bơm)
+      
+      Serial.println("🕹️ Công tắc vật lý: GẠT ON -> BẬT MÁY BƠM LIÊN TỤC!");
+      blinkLED(3, 100);
+      
+    } else {
+      // 2. Trạng thái GẠT SANG OFF (Chân 18 nhả ra, trở về HIGH do PULLUP)
+      autoMode = false; 
+      pumpStatus = false;
+      digitalWrite(RELAY_PIN, LOW); // Nhả Relay (LOW = Tắt Bơm)
+      
+      Serial.println("🛑 Công tắc vật lý: GẠT OFF -> TẮT MÁY BƠM!");
+      blinkLED(2, 200);
+    }
+    
+    // Lưu lại trạng thái hiện tại để so sánh cho lần gạt tiếp theo
+    lastButtonState = currentButtonState;
+  }
+  // -----------------------------------------------------------------------------------------
 
+  
   if (millis() - lastSendTime > 1000) {
     float temperature = dht.readTemperature();
     float humidity = dht.readHumidity();
